@@ -33,7 +33,7 @@ headers = {
 
 
 # Работа с ETL
-def update_rub_rates():
+def update_currencies_to_rub_rates():
     querystring = {"format": "json", "from": "RUB", "to": "RUB, USD, EUR, CNY", "amount": "1"}
     response = requests.request("GET", url, headers=headers, params=querystring).json()
 
@@ -49,6 +49,6 @@ def update_rub_rates():
         stmt = (
             update(rub_rates).
             where(rub_rates.c.id == rate_id).
-            values(rate=rate)
+            values(rate=(rate**(-1)))
         )
         conn.execute(stmt)
