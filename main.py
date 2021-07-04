@@ -4,7 +4,7 @@ import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, update
 
-from db import rub_rates
+from db import currency_to_rub_rate
 
 # Переменные окружения
 load_dotenv()
@@ -34,6 +34,11 @@ headers = {
 
 # Работа с ETL
 def update_currencies_to_rub_rates():
+    """Gets currencies rates and puts it into the Data Marts
+
+    :returns: None
+    """
+
     querystring = {"format": "json", "from": "RUB", "to": "RUB, USD, EUR, CNY", "amount": "1"}
     response = requests.request("GET", url, headers=headers, params=querystring).json()
 
@@ -47,8 +52,8 @@ def update_currencies_to_rub_rates():
     # Изменение курса валют
     for rate_id, rate in enumerate([usd_rate, eur_rate, cny_rate], 2):
         stmt = (
-            update(rub_rates).
-            where(rub_rates.c.id == rate_id).
+            update(currency_to_rub_rate).
+            where(currency_to_rub_rate.c.id == rate_id).
             values(rate=(rate**(-1)))
         )
         conn.execute(stmt)
