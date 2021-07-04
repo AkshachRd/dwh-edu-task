@@ -4,7 +4,7 @@ import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, update
 
-from db import currency_to_rub_rate
+from db import currency_to_rub_rate, currency_to_usd_rate
 
 # Переменные окружения
 load_dotenv()
@@ -34,7 +34,7 @@ headers = {
 
 # Работа с ETL
 def update_currencies_to_rub_rates():
-    """Gets currencies rates and puts it into the Data Marts
+    """Gets currencies rates for rubles and puts it into the Data Marts
 
     :returns: None
     """
@@ -54,6 +54,38 @@ def update_currencies_to_rub_rates():
         stmt = (
             update(currency_to_rub_rate).
             where(currency_to_rub_rate.c.id == rate_id).
-            values(rate=(rate**(-1)))
+            values(rate=(rate ** (-1)))
+        )
+        conn.execute(stmt)
+
+
+def update_currencies_to_usd_rates():
+    """Gets currencies rates for dollars and puts it into the Data Marts
+
+    :returns: None
+    """
+
+    querystring = {"format": "json", "from": "USD", "to": "RUB, USD, EUR, CNY", "amount": "1"}
+    response = requests.request("GET", url, headers=headers, params=querystring).json()
+
+    # TODO: Вопрос! Я не знаю, нужно ли было тут всё разделять, но решил, что так будет лучше)
+    rates = response["rates"]
+    rub_rate = rates["RUB"]["rate"]
+    eur_rate = rates["EUR"]["rate"]
+    cny_rate = rates["CNY"]["rate"]
+
+    # TODO: Обернуть все stmt в одну транзакцию
+    # Изменение курса валют
+    stmt = (
+        update(currency_to_usd_rate).
+        where(currency_to_usd_rate.c.id == 1).
+        values(rate=(rub_rate ** (-1)))
+    )
+    conn.execute(stmt)
+    for rate_id, rate in enumerate([eur_rate, cny_rate], 3):
+        stmt = (
+            update(currency_to_usd_rate).
+            where(currency_to_usd_rate.c.id == rate_id).
+            values(rate=(rate ** (-1)))
         )
         conn.execute(stmt)

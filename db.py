@@ -7,7 +7,7 @@ currency_to_rub_rate = Table('currency_to_rub_rate', metadata,
                              Column('rate', Numeric)
                              )
 
-currency_to_rub_rate = Table('currency_to_usd_rate', metadata,
+currency_to_usd_rate = Table('currency_to_usd_rate', metadata,
                              Column('id', Integer, primary_key=True, autoincrement=True),
                              Column('currency_name', String),
                              Column('rate', Numeric)
