@@ -4,13 +4,13 @@ import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, update
 
-from db import currency_to_rub_rate, currency_to_usd_rate
+from db import currency_to_rub_rate, currency_to_usd_rate, Table
 
 # Переменные окружения
 load_dotenv()
 CURRENCY_API_KEY = environ.get("CURRENCY_API_KEY")
-DB_USERNAME = environ.get("DB_USERNAME")  # TODO: Вот это можно убрать, но я пока не буду
-DB_PASSWORD = environ.get("DB_PASSWORD")  # TODO: Это тоже
+DB_USERNAME = environ.get("DB_USERNAME")
+DB_PASSWORD = environ.get("DB_PASSWORD")
 DB_SERVER = environ.get("DB_SERVER")
 DB_NAME = environ.get("DB_NAME")
 DB_DRIVER = environ.get("DB_DRIVER")
@@ -31,61 +31,40 @@ headers = {
     'x-rapidapi-host': "currency-converter5.p.rapidapi.com"
 }
 
-
 # Работа с ETL
-def update_currencies_to_rub_rates():
-    """Gets currencies rates for rubles and puts it into the Data Marts
+currencies = ["RUB", "USD", "EUR", "CNY"]
+
+
+# TODO: отделить запросы к API в отдельную функцию
+def update_currency_rate(db_table: Table, from_currency_code: str, to_currency_codes: list[str]) -> None:
+    """Gets currencies rates and puts it into the Data Marts
 
     :returns: None
     """
 
-    querystring = {"format": "json", "from": "RUB", "to": "RUB, USD, EUR, CNY", "amount": "1"}
+    from_currency_code = from_currency_code.upper()
+    to_currency_codes = [to_currency_code.upper() for to_currency_code in to_currency_codes]
+
+    querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
     response = requests.request("GET", url, headers=headers, params=querystring).json()
 
-    # TODO: Вопрос! Я не знаю, нужно ли было тут всё разделять, но решил, что так будет лучше)
     rates = response["rates"]
-    usd_rate = rates["USD"]["rate"]
-    eur_rate = rates["EUR"]["rate"]
-    cny_rate = rates["CNY"]["rate"]
 
     # TODO: Обернуть все stmt в одну транзакцию
     # Изменение курса валют
-    for rate_id, rate in enumerate([usd_rate, eur_rate, cny_rate], 2):
+    for currency_code in to_currency_codes:
         stmt = (
-            update(currency_to_rub_rate).
-            where(currency_to_rub_rate.c.id == rate_id).
-            values(rate=(rate ** (-1)))
+            update(db_table).
+            where(db_table.c.currency_code == currency_code).
+            values(rate=(rates[currency_code]["rate"] ** (-1)))
         )
         conn.execute(stmt)
 
 
-def update_currencies_to_usd_rates():
-    """Gets currencies rates for dollars and puts it into the Data Marts
+def update_currencies_rates(to_currencies: list[str]) -> None:
+    update_currency_rate(currency_to_rub_rate, "RUB", to_currencies)
+    update_currency_rate(currency_to_usd_rate, "USD", to_currencies)
 
-    :returns: None
-    """
 
-    querystring = {"format": "json", "from": "USD", "to": "RUB, USD, EUR, CNY", "amount": "1"}
-    response = requests.request("GET", url, headers=headers, params=querystring).json()
-
-    # TODO: Вопрос! Я не знаю, нужно ли было тут всё разделять, но решил, что так будет лучше)
-    rates = response["rates"]
-    rub_rate = rates["RUB"]["rate"]
-    eur_rate = rates["EUR"]["rate"]
-    cny_rate = rates["CNY"]["rate"]
-
-    # TODO: Обернуть все stmt в одну транзакцию
-    # Изменение курса валют
-    stmt = (
-        update(currency_to_usd_rate).
-        where(currency_to_usd_rate.c.id == 1).
-        values(rate=(rub_rate ** (-1)))
-    )
-    conn.execute(stmt)
-    for rate_id, rate in enumerate([eur_rate, cny_rate], 3):
-        stmt = (
-            update(currency_to_usd_rate).
-            where(currency_to_usd_rate.c.id == rate_id).
-            values(rate=(rate ** (-1)))
-        )
-        conn.execute(stmt)
+def update_rates_history():
+    return None
