@@ -2,9 +2,9 @@ from os import environ
 
 import requests
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, update
+from sqlalchemy import create_engine, insert, select, and_
 
-from db import currency_to_rub_rate, currency_to_usd_rate, Table
+from db import Table, currency_to_currency_rate
 
 # Переменные окружения
 load_dotenv()
@@ -35,36 +35,39 @@ headers = {
 currencies = ["RUB", "USD", "EUR", "CNY"]
 
 
-# TODO: отделить запросы к API в отдельную функцию
-def update_currency_rate(db_table: Table, from_currency_code: str, to_currency_codes: list[str]) -> None:
-    """Gets currencies rates and puts it into the Data Marts
+def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[str], to_currency_codes: list[str]) -> None:
+    """Gets currencies rates and puts it into the Data Store
 
     :returns: None
     """
 
-    from_currency_code = from_currency_code.upper()
+    from_currency_codes = [from_currency_code.upper() for from_currency_code in from_currency_codes]
     to_currency_codes = [to_currency_code.upper() for to_currency_code in to_currency_codes]
 
-    querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
-    response = requests.request("GET", url, headers=headers, params=querystring).json()
+    for from_currency_code in from_currency_codes:
+        querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
+        response = requests.request("GET", url, headers=headers, params=querystring).json()
+    
+        rates = response["rates"]
 
-    rates = response["rates"]
+        # Изменение курса валют
+        for to_currency_code in to_currency_codes:
+            stmt = (
+                select([db_table]).
+                where(and_(db_table.c.from_currency_code == from_currency_code,
+                           db_table.c.to_currency_code == to_currency_code))
+            )
+            result = conn.execute(stmt).fetchone()
 
-    # TODO: Обернуть все stmt в одну транзакцию
-    # Изменение курса валют
-    for currency_code in to_currency_codes:
-        stmt = (
-            update(db_table).
-            where(db_table.c.currency_code == currency_code).
-            values(rate=(rates[currency_code]["rate"] ** (-1)))
-        )
-        conn.execute(stmt)
-
-
-def update_currencies_rates(to_currencies: list[str]) -> None:
-    update_currency_rate(currency_to_rub_rate, "RUB", to_currencies)
-    update_currency_rate(currency_to_usd_rate, "USD", to_currencies)
-
-
-def update_rates_history():
-    return None
+            stmt = (
+                insert(db_table).values(
+                    from_currency_code=from_currency_code,
+                    to_currency_code=to_currency_code,
+                    rate=rates[to_currency_code]["rate"],
+                    from_currency_en_name=result[db_table.c.from_currency_en_name],
+                    from_currency_ru_name=result[db_table.c.from_currency_ru_name],
+                    to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
+                    to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
+                )
+            )
+            conn.execute(stmt)
