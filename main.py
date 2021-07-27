@@ -16,7 +16,7 @@ DB_SERVER = environ.get("DB_SERVER")
 DB_NAME = environ.get("DB_NAME")
 DB_DRIVER = environ.get("DB_DRIVER")
 
-# Работа с БД
+# Подключение БД
 db_connection_uri = 'mssql+pyodbc://{db_server}/{db_name}?driver={db_driver}'.format(
     db_server=DB_SERVER,
     db_name=DB_NAME,
@@ -25,7 +25,7 @@ db_connection_uri = 'mssql+pyodbc://{db_server}/{db_name}?driver={db_driver}'.fo
 engine = create_engine(db_connection_uri, echo=True)
 conn = engine.connect()
 
-# Работа с API
+# Подключение к API
 url = "https://currency-converter5.p.rapidapi.com/currency/convert"
 headers = {
     'x-rapidapi-key': CURRENCY_API_KEY,
@@ -36,9 +36,60 @@ headers = {
 currencies = ["RUB", "USD", "EUR", "CNY"]
 
 
-def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[str], to_currency_codes: list[str]) -> None:
-    """Gets currencies rates and puts it into the Data Store
+def get_rates(from_currency_code: str, to_currency_codes: list[str]) -> dict:
+    """Makes an API request to receive fresh currencies rates
 
+    :param from_currency_code:
+    :param to_currency_codes:
+    :return:
+    """
+
+    querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
+    response = requests.request("GET", url, headers=headers, params=querystring).json()
+
+    rates = response["rates"]
+    return rates
+
+
+def get_fresh_rates_insert_expr(db_table: Table, rates: dict, from_currency_code: str, to_currency_code: str) -> insert:
+    """Makes an SQL insert expression of a fresh rate
+
+    :param db_table:
+    :param rates:
+    :param from_currency_code:
+    :param to_currency_code:
+    :return:
+    """
+    # Взятие данных из БД для повторного использования
+    select_names_stmt = (
+        select([db_table]).
+        where(and_(db_table.c.from_currency_code == from_currency_code,
+                   db_table.c.to_currency_code == to_currency_code))
+    )
+    result = conn.execute(select_names_stmt).fetchone()
+
+    # Внесение новых курсов валют в БД
+    insert_stmt = (
+        insert(db_table).values(
+            from_currency_code=from_currency_code,
+            to_currency_code=to_currency_code,
+            rate=rates[to_currency_code]["rate"],
+            from_currency_en_name=result[db_table.c.from_currency_en_name],
+            from_currency_ru_name=result[db_table.c.from_currency_ru_name],
+            to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
+            to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
+        )
+    )
+
+    return insert_stmt
+
+
+def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[str], to_currency_codes: list[str]) -> None:
+    """Gets currencies rates and puts it into the Core
+
+    :param db_table:
+    :param from_currency_codes:
+    :param to_currency_codes:
     :returns: None
     """
 
@@ -49,35 +100,18 @@ def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[
 
     try:
         for from_currency_code in from_currency_codes:
-            querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
-            response = requests.request("GET", url, headers=headers, params=querystring).json()
+            rates = get_rates(from_currency_code, to_currency_codes)
 
-            rates = response["rates"]
-
-            # Изменение курса валют
             for to_currency_code in to_currency_codes:
-                select_names_stmt = (
-                    select([db_table]).
-                    where(and_(db_table.c.from_currency_code == from_currency_code,
-                               db_table.c.to_currency_code == to_currency_code))
-                )
-                result = conn.execute(select_names_stmt).fetchone()
-
-                insert_stmt = (
-                    insert(db_table).values(
-                        from_currency_code=from_currency_code,
-                        to_currency_code=to_currency_code,
-                        rate=rates[to_currency_code]["rate"],
-                        from_currency_en_name=result[db_table.c.from_currency_en_name],
-                        from_currency_ru_name=result[db_table.c.from_currency_ru_name],
-                        to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
-                        to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
-                    )
-                )
+                insert_stmt = get_fresh_rates_insert_expr(db_table, rates, from_currency_code, to_currency_code)
                 session.execute(insert_stmt)
+
         session.commit()
     except exc.SQLAlchemyError:
         session.rollback()
         raise
     finally:
         session.close()
+
+
+update_currency_to_currency_rate(currency_to_currency_rate, currencies, currencies)
