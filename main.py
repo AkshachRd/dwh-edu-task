@@ -2,7 +2,8 @@ from os import environ
 
 import requests
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, insert, select, and_
+from sqlalchemy import create_engine, insert, select, and_, exc
+from sqlalchemy.orm import Session
 
 from db import Table, currency_to_currency_rate
 
@@ -41,33 +42,42 @@ def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[
     :returns: None
     """
 
+    session = Session(engine)
+
     from_currency_codes = [from_currency_code.upper() for from_currency_code in from_currency_codes]
     to_currency_codes = [to_currency_code.upper() for to_currency_code in to_currency_codes]
 
-    for from_currency_code in from_currency_codes:
-        querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
-        response = requests.request("GET", url, headers=headers, params=querystring).json()
-    
-        rates = response["rates"]
+    try:
+        for from_currency_code in from_currency_codes:
+            querystring = {"format": "json", "from": from_currency_code, "to": ', '.join(to_currency_codes), "amount": "1"}
+            response = requests.request("GET", url, headers=headers, params=querystring).json()
 
-        # Изменение курса валют
-        for to_currency_code in to_currency_codes:
-            stmt = (
-                select([db_table]).
-                where(and_(db_table.c.from_currency_code == from_currency_code,
-                           db_table.c.to_currency_code == to_currency_code))
-            )
-            result = conn.execute(stmt).fetchone()
+            rates = response["rates"]
 
-            stmt = (
-                insert(db_table).values(
-                    from_currency_code=from_currency_code,
-                    to_currency_code=to_currency_code,
-                    rate=rates[to_currency_code]["rate"],
-                    from_currency_en_name=result[db_table.c.from_currency_en_name],
-                    from_currency_ru_name=result[db_table.c.from_currency_ru_name],
-                    to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
-                    to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
+            # Изменение курса валют
+            for to_currency_code in to_currency_codes:
+                select_names_stmt = (
+                    select([db_table]).
+                    where(and_(db_table.c.from_currency_code == from_currency_code,
+                               db_table.c.to_currency_code == to_currency_code))
                 )
-            )
-            conn.execute(stmt)
+                result = conn.execute(select_names_stmt).fetchone()
+
+                insert_stmt = (
+                    insert(db_table).values(
+                        from_currency_code=from_currency_code,
+                        to_currency_code=to_currency_code,
+                        rate=rates[to_currency_code]["rate"],
+                        from_currency_en_name=result[db_table.c.from_currency_en_name],
+                        from_currency_ru_name=result[db_table.c.from_currency_ru_name],
+                        to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
+                        to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
+                    )
+                )
+                session.execute(insert_stmt)
+        session.commit()
+    except exc.SQLAlchemyError:
+        session.rollback()
+        raise
+    finally:
+        session.close()
