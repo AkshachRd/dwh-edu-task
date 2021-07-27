@@ -80,7 +80,7 @@ def get_fresh_rates_insert_expr(db_table: Table, rates: dict, from_currency_code
             to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
         )
     )
-
+    conn.execute(insert_stmt)
     return insert_stmt
 
 
@@ -104,9 +104,9 @@ def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[
 
             for to_currency_code in to_currency_codes:
                 insert_stmt = get_fresh_rates_insert_expr(db_table, rates, from_currency_code, to_currency_code)
-                session.execute(insert_stmt)
+                # session.execute(insert_stmt)
 
-        session.commit()
+        # session.commit()
     except exc.SQLAlchemyError:
         session.rollback()
         raise
