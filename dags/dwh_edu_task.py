@@ -86,7 +86,7 @@ def _load_data(ti, db_table: Table) -> None:
 
 
 def _transform_data(ti, db_table: Table) -> Dict:
-    """Gets currencies rates and puts it into the Core
+    """Transforms currencies rates into more useful form
 
     :param db_table:
     :param from_currency_codes:
@@ -109,8 +109,10 @@ with DAG("dwh_edu_task", start_date=datetime(2021, 8, 5), schedule_interval="0 0
         'to_currency_codes': currencies
     })
     transform_data = PythonOperator(task_id="transform_data", python_callable=_transform_data, op_kwargs={
-        'db_table": currency_to_currency_rate
+        'db_table': currency_to_currency_rate
     })
-    load_data = PythonOperator(task_id="load_data", python_callable=_load_data)
+    load_data = PythonOperator(task_id="load_data", python_callable=_load_data, op_kwargs={
+        'db_table': currency_to_currency_rate
+    })
 
     extract_data >> transform_data >> load_data
