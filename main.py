@@ -3,6 +3,7 @@ from os import environ
 import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, insert, select, and_, exc
+from typing import List
 
 from db import Table, currency_to_currency_rate
 
@@ -35,7 +36,7 @@ headers = {
 currencies = ["RUB", "USD", "EUR", "CNY"]
 
 
-def get_rates(from_currency_code: str, to_currency_codes: list[str]) -> dict:
+def get_rates(from_currency_code: str, to_currency_codes: List[str]) -> dict:
     """Makes an API request to receive fresh currencies rates
 
     :param from_currency_code:
@@ -86,7 +87,7 @@ def insert_fresh_rate(db_table: Table, rates: dict, from_currency_code: str, to_
         raise
 
 
-def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[str], to_currency_codes: list[str]) -> None:
+def update_currency_to_currency_rate(db_table: Table, from_currency_codes: List[str], to_currency_codes: List[str]) -> None:
     """Gets currencies rates and puts it into the Core
 
     :param db_table:
