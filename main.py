@@ -59,27 +59,31 @@ def insert_fresh_rate(db_table: Table, rates: dict, from_currency_code: str, to_
     :param to_currency_code:
     :return:
     """
-    # Взятие данных из БД для повторного использования
-    select_names_stmt = (
-        select([db_table]).
-        where(and_(db_table.c.from_currency_code == from_currency_code,
-                   db_table.c.to_currency_code == to_currency_code))
-    )
-    result = conn.execute(select_names_stmt).fetchone()
 
-    # Внесение новых курсов валют в БД
-    insert_stmt = (
-        insert(db_table).values(
-            from_currency_code=from_currency_code,
-            to_currency_code=to_currency_code,
-            rate=rates[to_currency_code]["rate"],
-            from_currency_en_name=result[db_table.c.from_currency_en_name],
-            from_currency_ru_name=result[db_table.c.from_currency_ru_name],
-            to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
-            to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
+    try:
+        # Взятие данных из БД для повторного использования
+        select_names_stmt = (
+            select([db_table]).
+            where(and_(db_table.c.from_currency_code == from_currency_code,
+                       db_table.c.to_currency_code == to_currency_code))
         )
-    )
-    conn.execute(insert_stmt)
+        result = conn.execute(select_names_stmt).fetchone()
+
+        # Внесение новых курсов валют в БД
+        insert_stmt = (
+            insert(db_table).values(
+                from_currency_code=from_currency_code,
+                to_currency_code=to_currency_code,
+                rate=rates[to_currency_code]["rate"],
+                from_currency_en_name=result[db_table.c.from_currency_en_name],
+                from_currency_ru_name=result[db_table.c.from_currency_ru_name],
+                to_currency_en_name=result[currency_to_currency_rate.c.to_currency_en_name],
+                to_currency_ru_name=result[currency_to_currency_rate.c.to_currency_ru_name]
+            )
+        )
+        conn.execute(insert_stmt)
+    except exc.SQLAlchemyError:
+        raise
 
 
 def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[str], to_currency_codes: list[str]) -> None:
@@ -94,15 +98,11 @@ def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[
     from_currency_codes = [from_currency_code.upper() for from_currency_code in from_currency_codes]
     to_currency_codes = [to_currency_code.upper() for to_currency_code in to_currency_codes]
 
-    try:
-        for from_currency_code in from_currency_codes:
-            rates = get_rates(from_currency_code, to_currency_codes)
+    for from_currency_code in from_currency_codes:
+        rates = get_rates(from_currency_code, to_currency_codes)
 
-            for to_currency_code in to_currency_codes:
-                insert_fresh_rate(db_table, rates, from_currency_code, to_currency_code)
-
-    except exc.SQLAlchemyError:
-        raise
+        for to_currency_code in to_currency_codes:
+            insert_fresh_rate(db_table, rates, from_currency_code, to_currency_code)
 
 
 update_currency_to_currency_rate(currency_to_currency_rate, currencies, currencies)
