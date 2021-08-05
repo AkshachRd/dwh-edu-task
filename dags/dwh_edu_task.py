@@ -80,7 +80,7 @@ def _load_data(db_table: Table, rates: dict, from_currency_code: str, to_currenc
         raise
 
 
-def _transform_data(ti, db_table: Table, from_currency_codes: List[str], to_currency_codes: List[str]) -> None:
+def _transform_data(ti, db_table: Table, from_currency_codes: List[str], to_currency_codes: List[str]) -> Dict:
     """Gets currencies rates and puts it into the Core
 
     :param db_table:
@@ -91,6 +91,12 @@ def _transform_data(ti, db_table: Table, from_currency_codes: List[str], to_curr
 
 
     rates = ti.xcom_pull(task_ids='extract_data')
+    transformed_rates = {}
+    for from_currency_code, response in rates.items():
+        for to_currency_code in currencies:
+            transformed_rates[from_currency_code] = response[to_currency_code]["rate"]
+    
+    return transformed_rates
 
 
 with DAG("dwh_edu_task", start_date=datetime(2021, 8, 5), schedule_interval="0 0 * * *", catchup=False) as dag:
