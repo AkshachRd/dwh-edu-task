@@ -3,7 +3,6 @@ from os import environ
 import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, insert, select, and_, exc
-from sqlalchemy.orm import Session
 
 from db import Table, currency_to_currency_rate
 
@@ -51,8 +50,8 @@ def get_rates(from_currency_code: str, to_currency_codes: list[str]) -> dict:
     return rates
 
 
-def get_fresh_rates_insert_expr(db_table: Table, rates: dict, from_currency_code: str, to_currency_code: str) -> insert:
-    """Makes an SQL insert expression of a fresh rate
+def insert_fresh_rate(db_table: Table, rates: dict, from_currency_code: str, to_currency_code: str) -> None:
+    """Inserts a currency's fresh rate into Data Store
 
     :param db_table:
     :param rates:
@@ -81,7 +80,6 @@ def get_fresh_rates_insert_expr(db_table: Table, rates: dict, from_currency_code
         )
     )
     conn.execute(insert_stmt)
-    return insert_stmt
 
 
 def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[str], to_currency_codes: list[str]) -> None:
@@ -93,8 +91,6 @@ def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[
     :returns: None
     """
 
-    session = Session(engine)
-
     from_currency_codes = [from_currency_code.upper() for from_currency_code in from_currency_codes]
     to_currency_codes = [to_currency_code.upper() for to_currency_code in to_currency_codes]
 
@@ -103,15 +99,10 @@ def update_currency_to_currency_rate(db_table: Table, from_currency_codes: list[
             rates = get_rates(from_currency_code, to_currency_codes)
 
             for to_currency_code in to_currency_codes:
-                insert_stmt = get_fresh_rates_insert_expr(db_table, rates, from_currency_code, to_currency_code)
-                # session.execute(insert_stmt)
+                insert_fresh_rate(db_table, rates, from_currency_code, to_currency_code)
 
-        # session.commit()
     except exc.SQLAlchemyError:
-        session.rollback()
         raise
-    finally:
-        session.close()
 
 
 update_currency_to_currency_rate(currency_to_currency_rate, currencies, currencies)
