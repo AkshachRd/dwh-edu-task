@@ -45,7 +45,7 @@ def _extract_data(from_currency_codes: List[str], to_currency_codes: List[str]) 
     return rates
 
 
-def _load_data(ti, db_table: Table) -> None:
+def _load_data(ti, db_table: Table, from_currency_codes: List[str], to_currency_codes: List[str]) -> None:
     """Inserts a currency's fresh rate into Data Store
 
     :param db_table:
@@ -57,8 +57,8 @@ def _load_data(ti, db_table: Table) -> None:
     
     rates = ti.xcom_pull(task_ids="transform_data")
     
-    for from_currency_code in currencies:
-        for to_currency_code in currencies:   
+    for from_currency_code in from_currency_codes:
+        for to_currency_code in to_currency_codes:   
             try:
                 # Взятие данных из БД для повторного использования
                 select_names_stmt = (
@@ -85,7 +85,7 @@ def _load_data(ti, db_table: Table) -> None:
                 raise
 
 
-def _transform_data(ti, db_table: Table) -> Dict:
+def _transform_data(ti, db_table: Table, to_currency_codes: List[str]) -> Dict:
     """Transforms currencies rates into more useful form
 
     :param db_table:
@@ -97,7 +97,7 @@ def _transform_data(ti, db_table: Table) -> Dict:
     rates = ti.xcom_pull(task_ids="extract_data")
     transformed_rates = {}
     for from_currency_code, response in rates.items():
-        for to_currency_code in currencies:
+        for to_currency_code in to_currency_codes:
             transformed_rates[from_currency_code] = response[to_currency_code]["rate"]
     
     return transformed_rates
@@ -109,10 +109,13 @@ with DAG("dwh_edu_task", start_date=datetime(2021, 8, 5), schedule_interval="0 0
         'to_currency_codes': currencies
     })
     transform_data = PythonOperator(task_id="transform_data", python_callable=_transform_data, op_kwargs={
-        'db_table': currency_to_currency_rate
+        'db_table': currency_to_currency_rate,
+        'to_currency_codes': currencies
     })
     load_data = PythonOperator(task_id="load_data", python_callable=_load_data, op_kwargs={
-        'db_table': currency_to_currency_rate
+        'db_table': currency_to_currency_rate,
+        'from_currency_codes': currencies,
+        'to_currency_codes': currencies
     })
 
     extract_data >> transform_data >> load_data
