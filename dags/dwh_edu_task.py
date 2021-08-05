@@ -26,7 +26,7 @@ def _extract_data(from_currency_codes: List[str], to_currency_codes: List[str]) 
 
     :param from_currency_codes:
     :param to_currency_codes:
-    :return:
+    :returns: dict
     """
 
     from_currency_codes = [from_currency_code.upper() for from_currency_code in from_currency_codes]
@@ -48,11 +48,11 @@ def _extract_data(from_currency_codes: List[str], to_currency_codes: List[str]) 
 def _load_data(ti, db_table: Table, from_currency_codes: List[str], to_currency_codes: List[str]) -> None:
     """Inserts a currency's fresh rate into Data Store
 
+    :param ti:
     :param db_table:
-    :param rates:
-    :param from_currency_code:
-    :param to_currency_code:
-    :return:
+    :param from_currency_codes:
+    :param to_currency_codes:
+    :returns: None
     """
     
     rates = ti.xcom_pull(task_ids="transform_data")
@@ -85,13 +85,13 @@ def _load_data(ti, db_table: Table, from_currency_codes: List[str], to_currency_
                 raise
 
 
-def _transform_data(ti, db_table: Table, to_currency_codes: List[str]) -> Dict:
+def _transform_data(ti, db_table: Table, to_currency_codes: List[str]) -> dict:
     """Transforms currencies rates into more useful form
 
+    :param ti:
     :param db_table:
-    :param from_currency_codes:
     :param to_currency_codes:
-    :returns: None
+    :returns: dict
     """
 
     rates = ti.xcom_pull(task_ids="extract_data")
