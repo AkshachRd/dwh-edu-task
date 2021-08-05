@@ -44,7 +44,7 @@ def _extract_data(from_currency_codes: List[str], to_currency_codes: List[str]) 
     return rates
 
 
-def _load_data(db_table: Table, rates: dict, from_currency_code: str, to_currency_code: str) -> None:
+def _load_data(ti, db_table: Table) -> None:
     """Inserts a currency's fresh rate into Data Store
 
     :param db_table:
@@ -53,34 +53,38 @@ def _load_data(db_table: Table, rates: dict, from_currency_code: str, to_currenc
     :param to_currency_code:
     :return:
     """
+    
+    rates = ti.xcom_pull(task_ids="transform_data")
+    
+    for from_currency_code in currencies:
+        for to_currency_code in currencies:   
+            try:
+                # Взятие данных из БД для повторного использования
+                select_names_stmt = (
+                    select([db_table]).
+                    where(and_(db_table.c.from_currency_code == from_currency_code,
+                               db_table.c.to_currency_code == to_currency_code))
+                )
+                result = conn.execute(select_names_stmt).fetchone()
 
-    try:
-        # Взятие данных из БД для повторного использования
-        select_names_stmt = (
-            select([db_table]).
-            where(and_(db_table.c.from_currency_code == from_currency_code,
-                       db_table.c.to_currency_code == to_currency_code))
-        )
-        result = conn.execute(select_names_stmt).fetchone()
-
-        # Внесение новых курсов валют в БД
-        insert_stmt = (
-            insert(db_table).values(
-                from_currency_code=from_currency_code,
-                to_currency_code=to_currency_code,
-                rate=rates[to_currency_code]["rate"],
-                from_currency_en_name=result[db_table.c.from_currency_en_name],
-                from_currency_ru_name=result[db_table.c.from_currency_ru_name],
-                to_currency_en_name=result[db_table.c.to_currency_en_name],
-                to_currency_ru_name=result[db_table.c.to_currency_ru_name]
-            )
-        )
-        conn.execute(insert_stmt)
-    except exc.SQLAlchemyError:
-        raise
+                # Внесение новых курсов валют в БД
+                insert_stmt = (
+                    insert(db_table).values(
+                        from_currency_code=from_currency_code,
+                        to_currency_code=to_currency_code,
+                        rate=rates[from_currency_code][to_currency_code],
+                        from_currency_en_name=result[db_table.c.from_currency_en_name],
+                        from_currency_ru_name=result[db_table.c.from_currency_ru_name],
+                        to_currency_en_name=result[db_table.c.to_currency_en_name],
+                        to_currency_ru_name=result[db_table.c.to_currency_ru_name]
+                    )
+                )
+                conn.execute(insert_stmt)
+            except exc.SQLAlchemyError:
+                raise
 
 
-def _transform_data(ti, db_table: Table, from_currency_codes: List[str], to_currency_codes: List[str]) -> Dict:
+def _transform_data(ti, db_table: Table) -> Dict:
     """Gets currencies rates and puts it into the Core
 
     :param db_table:
@@ -89,8 +93,7 @@ def _transform_data(ti, db_table: Table, from_currency_codes: List[str], to_curr
     :returns: None
     """
 
-
-    rates = ti.xcom_pull(task_ids='extract_data')
+    rates = ti.xcom_pull(task_ids="extract_data")
     transformed_rates = {}
     for from_currency_code, response in rates.items():
         for to_currency_code in currencies:
