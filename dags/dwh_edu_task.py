@@ -5,6 +5,7 @@ from airflow.models import Variable
 
 import requests
 from sqlalchemy import insert, select, and_, exc, create_engine, Table
+from db import currency_to_currency_rate
 
 from typing import List
 from datetime import datetime
@@ -107,7 +108,9 @@ with DAG("dwh_edu_task", start_date=datetime(2021, 8, 5), schedule_interval="0 0
         'from_currency_codes': currencies,
         'to_currency_codes': currencies
     })
-    transform_data = PythonOperator(task_id="transform_data", python_callable=_transform_data)
+    transform_data = PythonOperator(task_id="transform_data", python_callable=_transform_data, op_kwargs={
+        'db_table": currency_to_currency_rate
+    })
     load_data = PythonOperator(task_id="load_data", python_callable=_load_data)
 
     extract_data >> transform_data >> load_data
